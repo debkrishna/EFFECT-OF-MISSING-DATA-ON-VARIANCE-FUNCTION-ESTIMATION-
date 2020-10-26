@@ -1,0 +1,191 @@
+---
+title: "Project Work"
+author: "Debkrishna Manna"
+date: "5/29/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+simulation=function(r){
+  x1=rt(1000,6)
+  library(rmutil)
+  x2=rlaplace(1000,0,1)
+  theta=c(0.5,0.25)
+  v=0.5+(0.25*(x1^2))
+  e=array(NA,1000)
+  for(i in 1:1000)e[i]=rnorm(1,mean=0,sd=(v[i]^0.5))
+  beta=c(1,6,2)
+  X=cbind(1,x1,x2)
+  y=(X%*%beta)+as.vector(e)
+  ##Generalized least square
+  beta_ols=solve(t(X)%*%X)%*%(t(X))%*%y
+  F=function(beta_ols){
+  #pseudolikelihood
+  likelihood=function(theta,x1,y,X,beta){
+    a= theta[1];b=theta[2]
+    (sum(log((a+(b*(x1^2)))^0.5)))+((1/2)*(sum(((y-(X%*%beta))^2)/(a+(b*(x1^2))))))
+  }
+  theta_est=optim(c(0.5,0.5),x1=x1,y=y,X=X,beta=beta_ols,likelihood)$par
+  v_est=(theta_est[1]+(theta_est[2]*(exp(-100))*(x1^2)))
+  ty=y/(v_est^0.5);tx1=x1/(v_est^0.5);tx2=x2/(v_est^0.5);
+  tx=cbind((1/v_est),tx1,tx2)
+  tbeta=(solve(t(tx)%*%tx))%*%t(tx)%*%ty
+  list(theta_est=theta_est,tbeta=tbeta)
+  }
+  ic=0
+  eps1=eps2=1
+  while(ic<100 && eps1>0.000001 && eps2>0.000001){
+  BOLD=F(beta_ols)$tbeta
+  theta_OLD=F(beta_ols)$theta_est
+  BNEW=F(BOLD)$tbeta
+  theta_NEW=F(BOLD)$theta_est
+  beta_ols=BNEW
+  eps1=(t(BNEW)%*%BNEW)-(t(BOLD)%*%BOLD)
+  eps2=(t(theta_NEW)%*%theta_NEW)-(t(theta_OLD)%*%theta_OLD)
+  ic=ic+1
+  }
+  tbeta=BNEW
+  bias_tbeta=tbeta-beta
+  bias_theta=theta_NEW-theta
+  v_est=(theta_NEW[1]+(theta_NEW[2]*(x1^2)))
+  squared_error_beta0=(tbeta[1]-beta[1])^2
+  squared_error_beta1=(tbeta[2]-beta[2])^2
+  squared_error_beta2=(tbeta[3]-beta[3])^2
+  squared_error_theta=t(theta_NEW-theta)%*%(theta_NEW-theta)
+  ##Generalised least square(with covariate missing)
+  M=cbind(y,1,x1,x2);M1=M[order(x1),]
+  q=quantile(M[,3],probs = 0.7)
+  s=c()
+  for( i in 1:nrow(M1)){
+    p=M1[i,3]
+    if ( p> q){
+        s=append(s,i)
+    }
+  }
+  M2=M1[-c(s),]
+  ny=M2[,1];nx1=M2[,3];nx2=M2[,4]
+  nX=cbind(1,nx1,nx2)
+  nbeta_ols=solve(t(nX)%*%nX)%*%(t(nX))%*%ny
+  nF=function(nbeta_ols){
+  #pseudolikelihood
+  likelihood=function(theta,x1,y,X,beta){
+    a= theta[1];b=theta[2]
+    (sum(log((a+(b*(x1^2)))^0.5)))+((1/2)*(sum(((y-(X%*%beta))^2)/(a+(b*(x1^2))))))
+  }
+  ntheta_est=optim(c(0.5,0.5),x1=nx1,y=ny,X=nX,beta=nbeta_ols,likelihood)$par
+  nv_est=(ntheta_est[1]+(ntheta_est[2]*(nx1^2)))
+  nty=ny/(nv_est^0.5);ntx1=nx1/(nv_est^0.5);ntx2=nx2/(nv_est^0.5);
+  ntx=cbind((1/nv_est),ntx1,ntx2)
+  ntbeta=(solve(t(ntx)%*%ntx))%*%t(ntx)%*%nty
+  list(ntheta_est=ntheta_est,ntbeta=ntbeta)
+  }
+  ic=0
+  eps1=eps2=1
+  while(ic<100 && eps1>0.000001 && eps2>0.000001){
+  nBOLD=nF(nbeta_ols)$ntbeta
+  ntheta_OLD=nF(nbeta_ols)$ntheta_est
+  nBNEW=nF(nBOLD)$ntbeta
+  ntheta_NEW=nF(nBOLD)$ntheta_est
+  nbeta_ols=nBNEW
+  eps1=(t(nBNEW)%*%nBNEW)-(t(nBOLD)%*%nBOLD)
+  eps2=(t(ntheta_NEW)%*%ntheta_NEW)-(t(ntheta_OLD)%*%ntheta_OLD)
+  ic=ic+1
+  }
+  ntbeta=nBNEW
+  nbias_tbeta=ntbeta-beta
+  nbias_theta=ntheta_NEW-theta
+  nsquared_error_beta0=(ntbeta[1]-beta[1])^2
+  nsquared_error_beta1=(ntbeta[2]-beta[2])^2
+  nsquared_error_beta2=(ntbeta[3]-beta[3])^2
+  nsquared_error_theta=t(ntheta_NEW-theta)%*%(ntheta_NEW-theta)
+  nv_est=(ntheta_NEW[1]+(ntheta_NEW[2]*(nx1^2)))
+  #plotting
+  plot(x1,v_est,col=4,xlab = "x1",ylab="Variance_Function")
+  points(nx1,nv_est,col=2)
+  list(bias=bias_tbeta,nbias=nbias_tbeta,se_beta0=squared_error_beta0,se_beta1=squared_error_beta1,se_beta2=squared_error_beta2,nse_beta0=nsquared_error_beta0,nse_beta1=nsquared_error_beta1,nse_beta2=nsquared_error_beta2,bias_o=bias_theta,nbias_o=nbias_theta,se_o=squared_error_theta,nse_o=nsquared_error_theta,BETA=tbeta,nBETA=ntbeta,THETA=theta_NEW,nTHETA=ntheta_NEW,x1=x1,v_est=v_est,nx1=nx1,nv_est=nv_est)
+}
+```
+
+```{r}
+r=c(1:100)
+H=lapply(r,simulation)
+```
+
+
+```{r}
+#Bias and MSE of Beta
+b=nb=array(NA,c(100,3))
+m_beta0=m_beta1=m_beta2=array(NA,100)
+ nm_beta0= nm_beta1=nm_beta2=array(NA,100)
+for (i in 1:100){
+  for(j in 1:3){
+  b[i,j]=H[[i]]$bias[j]
+  nb[i,j]=H[[i]]$nbias[j]
+  m_beta0[i]=H[[i]]$se_beta0
+  m_beta1[i]=H[[i]]$se_beta1
+  m_beta2[i]=H[[i]]$se_beta2
+  nm_beta0[i]=H[[i]]$nse_beta0
+  nm_beta1[i]=H[[i]]$nse_beta1
+  nm_beta2[i]=H[[i]]$nse_beta2
+  
+  }
+}
+### 'n' stands for observations after missing
+#MSE (Complete observations and observations after missing)
+mean(m_beta0);mean(nm_beta0)
+mean(m_beta1);mean(nm_beta1)
+mean(m_beta2);mean(nm_beta2)
+#Bias(Complete observations and observations after missing)
+mean(b[,1]);mean(nb[,1])
+mean(b[,2]);mean(nb[,2])
+mean(b[,3]);mean(nb[,3])
+```
+```{r}
+#Bias and MSE of theta 
+b_o=nb_o=array(NA,c(100,3))
+m_o=nm_o=array(NA,100)
+for (i in 1:100){
+  for(j in 1:2){
+  b_o[i,j]=H[[i]]$bias_o[j]
+  nb_o[i,j]=H[[i]]$nbias_o[j]
+  m_o[i]=H[[i]]$se_o
+  nm_o[i]=H[[i]]$nse_o
+  }
+}
+### 'n' stands for observations after missing
+#MSE (Complete observations and observations after missing)
+mean(m_o);mean(nm_o)
+#Bias(Complete observations and observations after missing)
+mean(b_o[,1]);mean(nb_o[,1])
+mean(b_o[,2]);mean(nb_o[,2])
+```
+```{r}
+#plotting(Comparing BETA for complete observations and for observations after missing)
+beta=nbeta=array(NA,c(100,3))
+for (i in 1:100){
+  for(j in 1:3){
+  beta[i,j]=H[[i]]$BETA[j]
+  nbeta[i,j]=H[[i]]$nBETA[j]
+  }
+}
+par(mfrow=c(1,2))
+boxplot(beta[,1],xlab="beta_0",ylim=c(0.35,1.0));boxplot(nbeta[,1],xlab="new_beta_0",ylim=c(0.35,1.0))
+boxplot(beta[,2],xlab="beta_1",ylim=c(3.5,7.8));boxplot(nbeta[,2],xlab="new_beta_1",ylim=c(3.5,7.8))
+boxplot(beta[,3],xlab="beta_2",ylim=c(-1.5,2.6));boxplot(nbeta[,3],xlab="new_beta_2",ylim=c(-1.5,2.6))
+```
+
+```{r}
+#plotting(Comparing THETA for complete observations and for observations after missing)
+theta=ntheta=array(NA,c(100,2))
+for (i in 1:100){
+  for(j in 1:2){
+  theta[i,j]=H[[i]]$THETA[j]
+  ntheta[i,j]=H[[i]]$nTHETA[j]
+  }
+}
+par(mfrow=c(1,2))
+boxplot(theta[,1],xlab="theta_1",ylim=c(0.1,1.0));boxplot(ntheta[,1],xlab="new_theta_1",ylim=c(0.1,1.0))
+boxplot(theta[,2],xlab="theta_2",ylim=c(0.0,0.6));boxplot(ntheta[,2],xlab="new_theta_2",ylim=c(0.0,0.6))
+```
+
